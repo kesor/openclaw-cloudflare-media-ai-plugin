@@ -117,6 +117,30 @@ const result = await gateway.rpc.cloudflareAi.transcribe({
 });
 ```
 
+## How It Differs from Built-in Providers (Deepgram, etc.)
+
+OpenClaw has built-in audio transcription providers (Deepgram, OpenAI, etc.) configured via `tools.media.audio.models`. These work automatically when media is attached to messages.
+
+This plugin works differently:
+
+| Aspect | Built-in Providers (Deepgram) | This Plugin |
+|--------|------------------------------|-------------|
+| Configuration | `tools.media.audio.models` | `plugins.entries.cloudflare-ai.config` |
+| Trigger | Auto on media attachments | Explicit tool call |
+| Provider | Hardcoded in core | Cloudflare Workers AI |
+| Use case | Automatic transcription | Explicit transcription tasks |
+
+### Using Both Together
+
+You can use both:
+1. **Built-in** for automatic transcription when agents receive audio
+2. **This plugin** for explicit transcription tasks in skills/agents
+
+Example skill usage:
+```markdown
+Use the cloudflare_ai tool to transcribe audio files when explicitly asked.
+```
+
 ## Architecture
 
 ```
@@ -153,6 +177,10 @@ const result = await gateway.rpc.cloudflareAi.transcribe({
 2. **Audio Handler**: Fetches audio from URL or local file, converts to required format
 3. **API Client**: Handles Cloudflare API authentication and requests
 4. **Response Parser**: Extracts transcription text from Cloudflare response
+
+### Alternative: Using Core's STT Runtime
+
+Plugins can also use `api.runtime.stt.transcribeAudioFile()` which uses the built-in `tools.media.audio` configuration (Deepgram, OpenAI, etc.). This is useful for plugins that want to use the same transcription as the core media understanding system.
 
 ## Development
 
