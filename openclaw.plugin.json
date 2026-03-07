@@ -1,0 +1,57 @@
+{
+  "id": "cloudflare-ai",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiToken": {
+        "type": "string",
+        "description": "Cloudflare API token with AI read permissions"
+      },
+      "accountId": {
+        "type": "string",
+        "description": "Cloudflare account ID"
+      },
+      "defaultModel": {
+        "type": "string",
+        "default": "@cf/openai/whisper-large-v3-turbo",
+        "description": "Default Whisper model to use for transcription"
+      },
+      "defaultLanguage": {
+        "type": "string",
+        "default": "",
+        "description": "Language code for transcription (empty for auto-detect)"
+      },
+      "timeout": {
+        "type": "number",
+        "default": 60000,
+        "description": "Request timeout in milliseconds"
+      }
+    },
+    "required": ["apiToken", "accountId"]
+  },
+  "uiHints": {
+    "apiToken": {
+      "label": "API Token",
+      "sensitive": true,
+      "help": "Cloudflare API token with AI read permissions"
+    },
+    "accountId": {
+      "label": "Account ID",
+      "help": "Your Cloudflare account ID (found in URL or dashboard)"
+    },
+    "defaultModel": {
+      "label": "Default Model",
+      "help": "Whisper model to use by default"
+    },
+    "defaultLanguage": {
+      "label": "Default Language",
+      "placeholder": "en",
+      "help": "Language code (e.g., en, es) or leave empty for auto-detect"
+    },
+    "timeout": {
+      "label": "Timeout (ms)",
+      "advanced": true
+    }
+  }
+}
