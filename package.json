@@ -3,21 +3,19 @@
   "version": "0.1.0",
   "description": "OpenClaw plugin for Cloudflare Workers AI - audio/image/video transcription and TTS",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": [
+    "src",
+    "openclaw.plugin.json"
+  ],
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
     "test": "vitest",
     "check": "oxlint && tsc --noEmit"
-  },
-  "dependencies": {
-    "@sinclair/typebox": "^0.34.0",
-    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -41,5 +39,11 @@
     "speech-to-text",
     "text-to-speech",
     "vision"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kesor/openclaw-cloudflare-media-ai-plugin.git"
+  },
+  "author": "",
+  "license": "MIT"
 }
