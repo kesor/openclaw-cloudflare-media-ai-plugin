@@ -1,5 +1,6 @@
 {
   "id": "cloudflare-ai",
+  "providers": ["cloudflare-ai"],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
