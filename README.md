@@ -28,13 +28,15 @@ OpenClaw plugin for **Cloudflare Workers AI** - provides media understanding cap
 
 ## Installation
 
-### Option 1: From npm (once published)
+**Note**: The `openclaw plugins install` command does not support remote URLs. Use one of the options below.
+
+### Option 1: From npm (recommended)
 
 ```bash
 openclaw plugins install @kesor/openclaw-cloudflare-plugin
 ```
 
-### Option 2: From a local path (development)
+### Option 2: From a local path
 
 ```bash
 # Clone the plugin repo or use local path
