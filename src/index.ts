@@ -1,202 +1,214 @@
-import { Type } from "@sinclair/typebox";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
 
 export interface CloudflareAiConfig {
   apiToken: string;
   accountId: string;
-  defaultModel: string;
+  audioModel: string;
+  imageModel: string;
+  ttsModel: string;
   defaultLanguage: string;
   timeout: number;
 }
 
-const CloudflareAiToolSchema = Type.Union([
-  Type.Object({
-    action: Type.Literal("transcribe"),
-    audioUrl: Type.Optional(Type.String({ description: "URL to audio file" })),
-    audioPath: Type.Optional(Type.String({ description: "Local path to audio file" })),
-    model: Type.Optional(Type.String({ description: "Whisper model to use" })),
-    language: Type.Optional(Type.String({ description: "Language code (e.g., en, es)" })),
-  }),
-  Type.Object({
-    action: Type.Literal("status"),
-  }),
-]);
-
 const cloudflareAiPlugin = {
   id: "cloudflare-ai",
   name: "Cloudflare AI",
-  description: "Audio transcription using Cloudflare Workers AI Whisper models",
+  description: "Media understanding using Cloudflare Workers AI (Whisper, Llama Vision, Deepgram TTS)",
   register(api: OpenClawPluginApi) {
     const config = this.resolveConfig(api.pluginConfig);
     this.validateConfig(config, api);
 
-    let runtimePromise: Promise<CloudflareAiRuntime> | null = null;
-    let runtime: CloudflareAiRuntime | null = null;
+    api.registerMediaProvider({
+      id: "cloudflare-ai",
+      label: "Cloudflare AI Workers",
+      capabilities: ["audio", "image", "video", "tts"],
+      aliases: ["cloudflare", "cf"],
+      docsPath: "https://developers.cloudflare.com/workers-ai/",
 
-    const ensureRuntime = async () => {
-      if (!config) {
-        throw new Error("Cloudflare AI plugin not configured");
-      }
-      if (runtime) {
-        return runtime;
-      }
-      if (!runtimePromise) {
-        runtimePromise = createCloudflareAiRuntime(config, api.logger);
-      }
-      try {
-        runtime = await runtimePromise;
-      } catch (err) {
-        runtimePromise = null;
-        throw err;
-      }
-      return runtime;
-    };
+      async transcribeAudio(req) {
+        const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.audioModel}`;
 
-    api.registerTool({
-      name: "cloudflare_ai",
-      label: "Cloudflare AI",
-      description: "Transcribe audio files using Cloudflare Workers AI Whisper models",
-      parameters: CloudflareAiToolSchema,
-      async execute(_toolCallId, params) {
-        const json = (payload: unknown) => ({
-          content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
-          details: payload,
+        const input: Record<string, unknown> = {
+          audio: req.buffer.toString("base64"),
+        };
+        if (req.language) {
+          input.language = req.language;
+        }
+
+        const response = await (req.fetchFn ?? fetch)(apiUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${req.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(input),
+          signal: AbortSignal.timeout(req.timeoutMs),
         });
 
-        try {
-          const rt = await ensureRuntime();
-
-          if (params?.action === "status") {
-            return json({
-              configured: true,
-              accountId: rt.config.accountId,
-              defaultModel: rt.config.defaultModel,
-            });
-          }
-
-          if (params?.action === "transcribe") {
-            const audioUrl = typeof params.audioUrl === "string" ? params.audioUrl : undefined;
-            const audioPath = typeof params.audioPath === "string" ? params.audioPath : undefined;
-            const model = typeof params.model === "string" ? params.model : undefined;
-            const language = typeof params.language === "string" ? params.language : undefined;
-
-            if (!audioUrl && !audioPath) {
-              throw new Error("audioUrl or audioPath required");
-            }
-
-            const result = await rt.transcribe({
-              audioUrl,
-              audioPath,
-              model: model || rt.config.defaultModel,
-              language: language || rt.config.defaultLanguage || undefined,
-            });
-
-            return json(result);
-          }
-
-          throw new Error("Unknown action");
-        } catch (err) {
-          return json({
-            error: err instanceof Error ? err.message : String(err),
-          });
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Cloudflare API error: ${response.status} ${errorText}`);
         }
+
+        const data = await response.json() as {
+          result?: {
+            text?: string;
+            transcription_info?: { language?: string; duration?: number };
+          };
+        };
+
+        if (!data.result?.text) {
+          throw new Error("No transcription returned from Cloudflare");
+        }
+
+        return {
+          text: data.result.text,
+          model: req.model ?? config.audioModel,
+        };
+      },
+
+      async describeImage(req) {
+        const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.imageModel}`;
+
+        const imageBase64 = req.buffer.toString("base64");
+
+        const input: Record<string, unknown> = {
+          messages: [
+            {
+              role: "user" as const,
+              content: [
+                { type: "text" as const, text: req.prompt || "Describe this image in detail." },
+                {
+                  type: "image_url" as const,
+                  image_url: { url: `data:${req.mime || "image/jpeg"};base64,${imageBase64}` },
+                },
+              ],
+            },
+          ],
+          max_tokens: req.maxTokens || 1024,
+        };
+
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${req.apiKey}`,
+          "Content-Type": "application/json",
+        };
+        if (req.headers) {
+          Object.assign(headers, req.headers);
+        }
+
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(input),
+          signal: AbortSignal.timeout(req.timeoutMs),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Cloudflare API error: ${response.status} ${errorText}`);
+        }
+
+        const data = await response.json() as { result?: { response?: string } };
+
+        if (!data.result?.response) {
+          throw new Error("No description returned from Cloudflare");
+        }
+
+        return {
+          text: data.result.response,
+          model: req.model ?? config.imageModel,
+        };
+      },
+
+      async describeVideo(req) {
+        const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.imageModel}`;
+
+        const imageBase64 = req.buffer.toString("base64");
+
+        const input: Record<string, unknown> = {
+          messages: [
+            {
+              role: "user" as const,
+              content: [
+                { type: "text" as const, text: req.prompt || "Describe this video frame in detail." },
+                {
+                  type: "image_url" as const,
+                  image_url: { url: `data:${req.mime || "image/jpeg"};base64,${imageBase64}` },
+                },
+              ],
+            },
+          ],
+        };
+
+        const response = await (req.fetchFn ?? fetch)(apiUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${req.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(input),
+          signal: AbortSignal.timeout(req.timeoutMs),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Cloudflare API error: ${response.status} ${errorText}`);
+        }
+
+        const data = await response.json() as { result?: { response?: string } };
+
+        if (!data.result?.response) {
+          throw new Error("No description returned from Cloudflare");
+        }
+
+        return {
+          text: data.result.response,
+          model: req.model ?? config.imageModel,
+        };
+      },
+
+      async textToSpeech(req) {
+        const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.ttsModel}`;
+
+        const input: Record<string, unknown> = {
+          text: req.text,
+        };
+
+        if (req.voice) {
+          input.speaker = req.voice;
+        }
+
+        const response = await (req.fetchFn ?? fetch)(apiUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${req.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(input),
+          signal: AbortSignal.timeout(req.timeoutMs),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Cloudflare API error: ${response.status} ${errorText}`);
+        }
+
+        const audioBuffer = await response.arrayBuffer();
+
+        return {
+          audio: Buffer.from(audioBuffer),
+          mime: "audio/mp3",
+          sampleRate: 24000,
+        };
       },
     });
-
-    api.registerGatewayMethod(
-      "cloudflare-ai.transcribe",
-      async ({ params, respond }) => {
-        try {
-          const rt = await ensureRuntime();
-          const audioUrl = typeof params?.audioUrl === "string" ? params.audioUrl : undefined;
-          const audioPath = typeof params?.audioPath === "string" ? params.audioPath : undefined;
-
-          if (!audioUrl && !audioPath) {
-            respond(false, { error: "audioUrl or audioPath required" });
-            return;
-          }
-
-          const result = await rt.transcribe({
-            audioUrl,
-            audioPath,
-            model: typeof params?.model === "string" ? params.model : rt.config.defaultModel,
-            language: typeof params?.language === "string" ? params.language : rt.config.defaultLanguage || undefined,
-          });
-
-          respond(true, result);
-        } catch (err) {
-          respond(false, { error: err instanceof Error ? err.message : String(err) });
-        }
-      },
-    );
-
-    api.registerGatewayMethod(
-      "cloudflare-ai.status",
-      async ({ respond }) => {
-        try {
-          const rt = await ensureRuntime();
-          respond(true, {
-            configured: true,
-            accountId: rt.config.accountId,
-            defaultModel: rt.config.defaultModel,
-          });
-        } catch (err) {
-          respond(false, { error: err instanceof Error ? err.message : String(err) });
-        }
-      },
-    );
-
-    api.registerCli(
-      ({ program }) => {
-        program
-          .command("cloudflare")
-          .description("Cloudflare AI plugin commands")
-          .action(() => {
-            program.help();
-          });
-
-        program
-          .command("cloudflare transcribe")
-          .description("Transcribe an audio file")
-          .option("-u, --url <url>", "URL to audio file")
-          .option("-p, --path <path>", "Local path to audio file")
-          .option("-m, --model <model>", "Whisper model to use")
-          .option("-l, --language <language>", "Language code")
-          .action(async (opts) => {
-            const rt = await ensureRuntime();
-            const result = await rt.transcribe({
-              audioUrl: opts.url,
-              audioPath: opts.path,
-              model: opts.model || rt.config.defaultModel,
-              language: opts.language || rt.config.defaultLanguage || undefined,
-            });
-            console.log(JSON.stringify(result, null, 2));
-          });
-
-        program
-          .command("cloudflare status")
-          .description("Show plugin status")
-          .action(async () => {
-            const rt = await ensureRuntime();
-            console.log(JSON.stringify({
-              configured: true,
-              accountId: rt.config.accountId,
-              defaultModel: rt.config.defaultModel,
-            }, null, 2));
-          });
-      },
-      { commands: ["cloudflare"] },
-    );
 
     api.registerService({
       id: "cloudflare-ai",
       start: async () => {
         api.logger.info("[cloudflare-ai] Plugin started");
       },
-      stop: async () => {
-        runtimePromise = null;
-        runtime = null;
-      },
+      stop: async () => {},
     });
   },
 
@@ -205,7 +217,9 @@ const cloudflareAiPlugin = {
     return {
       apiToken: typeof raw?.apiToken === "string" ? raw.apiToken : "",
       accountId: typeof raw?.accountId === "string" ? raw.accountId : "",
-      defaultModel: typeof raw?.defaultModel === "string" ? raw.defaultModel : "@cf/openai/whisper-large-v3-turbo",
+      audioModel: typeof raw?.audioModel === "string" ? raw.audioModel : "@cf/openai/whisper-large-v3-turbo",
+      imageModel: typeof raw?.imageModel === "string" ? raw.imageModel : "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+      ttsModel: typeof raw?.ttsModel === "string" ? raw.ttsModel : "@cf/deepgram/aura-2-en",
       defaultLanguage: typeof raw?.defaultLanguage === "string" ? raw.defaultLanguage : "",
       timeout: typeof raw?.timeout === "number" ? raw.timeout : 60000,
     };
@@ -220,91 +234,5 @@ const cloudflareAiPlugin = {
     }
   },
 };
-
-interface TranscribeOptions {
-  audioUrl?: string;
-  audioPath?: string;
-  model: string;
-  language?: string;
-}
-
-interface TranscribeResult {
-  text: string;
-  model: string;
-  language?: string;
-}
-
-interface CloudflareAiRuntime {
-  config: CloudflareAiConfig;
-  transcribe(options: TranscribeOptions): Promise<TranscribeResult>;
-}
-
-async function createCloudflareAiRuntime(
-  config: CloudflareAiConfig,
-  logger: OpenClawPluginApi["logger"],
-): Promise<CloudflareAiRuntime> {
-  return {
-    config,
-    async transcribe(options: TranscribeOptions): Promise<TranscribeResult> {
-      let audioBuffer: ArrayBuffer;
-
-      if (options.audioUrl) {
-        logger.info(`[cloudflare-ai] Fetching audio from ${options.audioUrl}`);
-        const response = await fetch(options.audioUrl, {
-          signal: AbortSignal.timeout(config.timeout),
-        });
-        if (!response.ok) {
-          throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
-        }
-        audioBuffer = await response.arrayBuffer();
-      } else if (options.audioPath) {
-        logger.info(`[cloudflare-ai] Reading audio from ${options.audioPath}`);
-        const fs = await import("node:fs/promises");
-        audioBuffer = await fs.readFile(options.audioPath).then((b) => b.buffer);
-      } else {
-        throw new Error("No audio source provided");
-      }
-
-      const audioBase64 = Buffer.from(audioBuffer).toString("base64");
-
-      const input: Record<string, unknown> = {
-        audio: audioBase64,
-      };
-      if (options.language) {
-        input.language = options.language;
-      }
-
-      const url = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${options.model}`;
-      logger.info(`[cloudflare-ai] Calling Cloudflare AI: ${options.model}`);
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.apiToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(input),
-        signal: AbortSignal.timeout(config.timeout),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Cloudflare API error: ${response.status} ${errorText}`);
-      }
-
-      const data = await response.json() as { result?: { text?: string } };
-      
-      if (!data.result?.text) {
-        throw new Error("No transcription returned from Cloudflare");
-      }
-
-      return {
-        text: data.result.text,
-        model: options.model,
-        language: options.language,
-      };
-    },
-  };
-}
 
 export default cloudflareAiPlugin;

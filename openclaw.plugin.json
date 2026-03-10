@@ -12,10 +12,20 @@
         "type": "string",
         "description": "Cloudflare account ID"
       },
-      "defaultModel": {
+      "audioModel": {
         "type": "string",
         "default": "@cf/openai/whisper-large-v3-turbo",
-        "description": "Default Whisper model to use for transcription"
+        "description": "Whisper model for audio transcription (STT)"
+      },
+      "imageModel": {
+        "type": "string",
+        "default": "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+        "description": "Vision model for image and video description"
+      },
+      "ttsModel": {
+        "type": "string",
+        "default": "@cf/deepgram/aura-2-en",
+        "description": "TTS model for text-to-speech"
       },
       "defaultLanguage": {
         "type": "string",
@@ -40,9 +50,17 @@
       "label": "Account ID",
       "help": "Your Cloudflare account ID (found in URL or dashboard)"
     },
-    "defaultModel": {
-      "label": "Default Model",
-      "help": "Whisper model to use by default"
+    "audioModel": {
+      "label": "Audio Model (STT)",
+      "help": "Whisper model for speech-to-text"
+    },
+    "imageModel": {
+      "label": "Image/Video Model",
+      "help": "Vision model for image and video understanding"
+    },
+    "ttsModel": {
+      "label": "TTS Model",
+      "help": "Text-to-speech model"
     },
     "defaultLanguage": {
       "label": "Default Language",

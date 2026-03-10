@@ -1,10 +1,14 @@
 {
-  "name": "@openclaw/cloudflare-ai",
+  "name": "@kesor/openclaw-cloudflare-plugin",
   "version": "0.1.0",
-  "description": "OpenClaw plugin for Cloudflare Workers AI - audio transcription with Whisper models",
+  "description": "OpenClaw plugin for Cloudflare Workers AI - audio/image/video transcription and TTS",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -30,8 +34,12 @@
     "openclaw",
     "plugin",
     "cloudflare",
+    "workers-ai",
     "whisper",
+    "llama",
     "transcription",
-    "speech-to-text"
+    "speech-to-text",
+    "text-to-speech",
+    "vision"
   ]
 }

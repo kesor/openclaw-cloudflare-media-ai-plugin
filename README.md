@@ -1,16 +1,15 @@
-# @openclaw/cloudflare-ai
+# @kesor/openclaw-cloudflare-plugin
 
-OpenClaw plugin for **Cloudflare Workers AI** - provides audio transcription capabilities using Whisper models.
+OpenClaw plugin for **Cloudflare Workers AI** - provides media understanding capabilities (speech-to-text, image description, video description, text-to-speech) using Cloudflare's AI models.
 
 ## Features
 
-- **Audio Transcription**: Transcribe audio files using Cloudflare Workers AI Whisper models
-- **Multiple Models**: Support for various Whisper models:
-  - `@cf/openai/whisper` - General-purpose Whisper
-  - `@cf/openai/whisper-large-v3-turbo` - Faster large model
-  - `@cf/openai/whisper-tiny-en` - English-only tiny model
-- **Agent Tools**: Exposes a `cloudflare_ai` tool for OpenClaw agents
-- **Configurable**: Adjust model, language, and other parameters
+- **Speech-to-Text (Audio Transcription)**: Transcribe audio using Cloudflare Whisper models
+- **Image Understanding**: Describe images using vision models (Llama Vision, Llava)
+- **Video Understanding**: Describe video frames using vision models
+- **Text-to-Speech (TTS)**: Generate speech using Deepgram Aura models
+- **Automatic Integration**: Works seamlessly with OpenClaw's media-understanding pipeline
+- **Multiple Models**: Configurable models for audio, vision, and TTS tasks
 
 ## Requirements
 
@@ -18,21 +17,46 @@ OpenClaw plugin for **Cloudflare Workers AI** - provides audio transcription cap
 - Cloudflare account with Workers AI enabled
 - Cloudflare API token with AI read permissions
 
-## Install (local development)
+### Getting Cloudflare Credentials
 
-### Option A: Install via OpenClaw CLI (recommended)
+1. **Account ID**: Found in your Cloudflare Dashboard URL (e.g., `https://dash.cloudflare.com/your-account-id`)
+
+2. **API Token**: Create one at https://dash.cloudflare.com/profile/api-tokens
+   - Click "Create Token"
+   - Use the "Edit Workers AI" template or create a custom token with `AI:Read` permission
+   - Copy the token (it won't be shown again)
+
+## Installation
+
+### Option 1: Install as an OpenClaw User (Recommended)
+
+If you're using OpenClaw (pre-built), install the plugin via the CLI:
 
 ```bash
-openclaw plugins install @openclaw/cloudflare-ai
+openclaw plugins install @kesor/openclaw-cloudflare-plugin
 ```
 
-Restart the Gateway afterwards.
+Then configure the plugin (see Configuration section below) and restart the Gateway.
 
-### Option B: Link for development
+### Option 2: Using a Custom Build of OpenClaw
+
+If you're compiling OpenClaw yourself, add this plugin to your OpenClaw extensions:
+
+```bash
+# From your OpenClaw source directory
+cp -r /path/to/plugin-cloudflare extensions/cloudflare-ai
+
+# Rebuild OpenClaw
+pnpm build
+```
+
+The plugin will be automatically loaded when OpenClaw starts.
+
+### Option 3: Manual Installation (Global Extension)
 
 ```bash
 mkdir -p ~/.openclaw/extensions
-cp -R /path/to/openclaw-plugin-cloudflare ~/.openclaw/extensions/cloudflare-ai
+cp -R /path/to/plugin-cloudflare ~/.openclaw/extensions/cloudflare-ai
 cd ~/.openclaw/extensions/cloudflare-ai && pnpm install
 ```
 
@@ -46,7 +70,9 @@ Add to your OpenClaw config under `plugins.entries.cloudflare-ai.config`:
 {
   "apiToken": "your_cloudflare_api_token",
   "accountId": "your_cloudflare_account_id",
-  "defaultModel": "@cf/openai/whisper-large-v3-turbo",
+  "audioModel": "@cf/openai/whisper-large-v3-turbo",
+  "imageModel": "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+  "ttsModel": "@cf/deepgram/aura-2-en",
   "defaultLanguage": "en",
   "timeout": 60000
 }
@@ -58,129 +84,146 @@ Add to your OpenClaw config under `plugins.entries.cloudflare-ai.config`:
 |--------|------|---------|-------------|
 | `apiToken` | string | (required) | Cloudflare API token with AI read permissions |
 | `accountId` | string | (required) | Cloudflare account ID |
-| `defaultModel` | string | `@cf/openai/whisper-large-v3-turbo` | Default Whisper model to use |
+| `audioModel` | string | `@cf/openai/whisper-large-v3-turbo` | Whisper model for STT |
+| `imageModel` | string | `@cf/meta/llama-3.2-11b-vision-instruct-fp8` | Vision model for image/video |
+| `ttsModel` | string | `@cf/deepgram/aura-2-en` | TTS model for speech synthesis |
 | `defaultLanguage` | string | `""` (auto-detect) | Language code (e.g., "en", "es") |
 | `timeout` | number | `60000` | Request timeout in milliseconds |
 
-### Available Whisper Models
+## Available Models
+
+### Speech-to-Text (Audio)
 
 | Model ID | Description | Pricing |
 |----------|-------------|---------|
+| `@cf/openai/whisper-large-v3-turbo` | Faster large model (recommended) | $0.00051/min |
 | `@cf/openai/whisper` | General-purpose Whisper | $0.00045/min |
-| `@cf/openai/whisper-large-v3-turbo` | Faster large model | $0.00051/min |
 | `@cf/openai/whisper-tiny-en` | English-only tiny | Free |
+
+### Vision (Image/Video)
+
+| Model ID | Description | Context |
+|----------|-------------|---------|
+| `@cf/meta/llama-3.2-11b-vision-instruct-fp8` | Llama 3.2 11B Vision (recommended) | 128K |
+| `@cf/meta/llama-3.2-90b-vision-instruct-fp8` | Llama 3.2 90B Vision | 128K |
+| `@cf/llava-1.5-7b-vision-fp8` | Llava 1.5 7B | 4K |
+
+### Text-to-Speech (TTS)
+
+| Model ID | Description | Pricing |
+|----------|-------------|---------|
+| `@cf/deepgram/aura-2-en` | Deepgram Aura 2 (English, recommended) | $0.03/1K chars |
+| `@cf/deepgram/aura-2-es` | Deepgram Aura 2 (Spanish) | $0.03/1K chars |
+| `@cf/deepgram/aura-1` | Deepgram Aura 1 | $0.015/1K chars |
+| `@cf/myshellai/melotts` | MeloTTS (multi-lingual) | Free |
+
+**Note**: To use Llama 3.2 Vision models, you must first accept the Meta License and Acceptable Use Policy by sending a request:
+```bash
+curl https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/ai/run/@cf/meta/llama-3.2-11b-vision-instruct-fp8 \
+  -X POST \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -d '{ "prompt": "agree"}'
+```
 
 ## Usage
 
-### Agent Tool
+Once configured, the plugin automatically integrates with OpenClaw's media-understanding pipeline. When users send audio, images, or videos:
 
-The plugin exposes a `cloudflare_ai` tool that agents can use:
+1. OpenClaw detects the media attachment
+2. The media is processed through the configured providers
+3. Cloudflare AI Workers is used if configured as the provider
 
-```typescript
-// Tool: cloudflare_ai
-// Parameters:
+### Setting as Default Provider
+
+To use Cloudflare as your default media provider, configure `tools.media` in your OpenClaw config:
+
+```json5
 {
-  action: "transcribe",      // Action to perform
-  audioUrl: "https://example.com/audio.mp3",  // URL to audio file
-  // OR
-  audioPath: "/path/to/audio.wav",  // Local file path
-  model: "@cf/openai/whisper-large-v3-turbo",  // Optional: override default model
-  language: "en",  // Optional: override default language
+  "tools": {
+    "media": {
+      "audio": {
+        "defaultProvider": "cloudflare-ai"
+      },
+      "image": {
+        "defaultProvider": "cloudflare-ai"
+      },
+      "video": {
+        "defaultProvider": "cloudflare-ai"
+      },
+      "tts": {
+        "defaultProvider": "cloudflare-ai"
+      }
+    }
+  }
 }
 ```
 
-Example agent prompt usage:
+### Verifying Installation
+
+After configuration, restart the Gateway and check logs for:
 ```
-Please transcribe the audio file at https://example.com/meeting.mp3 using the cloudflare_ai tool.
-```
-
-### CLI Commands
-
-```bash
-# Test transcription
-openclaw cloudflare transcribe --url "https://example.com/audio.mp3"
-
-# Transcribe with specific model
-openclaw cloudflare transcribe --url "https://example.com/audio.mp3" --model "@cf/openai/whisper"
-
-# Check plugin status
-openclaw cloudflare status
+[cloudflare-ai] Plugin started
 ```
 
-### Gateway RPC
+You can also verify the plugin is registered by checking `openclaw plugins list`.
 
-```typescript
-// Call from external code via Gateway RPC
-const result = await gateway.rpc.cloudflareAi.transcribe({
-  audioUrl: "https://example.com/audio.mp3",
-  model: "@cf/openai/whisper-large-v3-turbo"
-});
+### How It Works
+
+The plugin uses OpenClaw's `registerMediaProvider` API to register as a media provider. When media is attached to incoming messages:
+
 ```
-
-## How It Differs from Built-in Providers (Deepgram, etc.)
-
-OpenClaw has built-in audio transcription providers (Deepgram, OpenAI, etc.) configured via `tools.media.audio.models`. These work automatically when media is attached to messages.
-
-This plugin works differently:
-
-| Aspect | Built-in Providers (Deepgram) | This Plugin |
-|--------|------------------------------|-------------|
-| Configuration | `tools.media.audio.models` | `plugins.entries.cloudflare-ai.config` |
-| Trigger | Auto on media attachments | Explicit tool call |
-| Provider | Hardcoded in core | Cloudflare Workers AI |
-| Use case | Automatic transcription | Explicit transcription tasks |
-
-### Using Both Together
-
-You can use both:
-1. **Built-in** for automatic transcription when agents receive audio
-2. **This plugin** for explicit transcription tasks in skills/agents
-
-Example skill usage:
-```markdown
-Use the cloudflare_ai tool to transcribe audio files when explicitly asked.
+User sends audio/image/video
+         │
+         ▼
+OpenClaw media-understanding pipeline
+         │
+         ▼
+Cloudflare AI Workers provider (this plugin)
+         │
+         ▼
+Transcription / Description returned to agent
 ```
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    OpenClaw Gateway                     │
+│                   OpenClaw Gateway                       │
 ├─────────────────────────────────────────────────────────┤
 │  cloudflare-ai plugin                                   │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │  Tool: cloudflare_ai                            │   │
+│  │  MediaProvider: cloudflare-ai                   │   │
 │  │  ┌───────────────────────────────────────────┐  │   │
-│  │  │  Audio Handler                             │  │   │
-│  │  │  - Fetch audio from URL or local path     │  │   │
-│  │  │  - Convert to base64                       │  │   │
+│  │  │  transcribeAudio()                        │  │   │
+│  │  │  - Receives audio buffer                  │  │   │
+│  │  │  - Calls Cloudflare Whisper API          │  │   │
 │  │  └───────────────────────────────────────────┘  │   │
 │  │  ┌───────────────────────────────────────────┐  │   │
-│  │  │  Cloudflare API Client                    │  │   │
-│  │  │  - API token authentication               │  │   │
-│  │  │  - Account ID routing                    │  │   │
-│  │  │  - Model selection                        │  │   │
+│  │  │  describeImage()                          │  │   │
+│  │  │  - Receives image buffer                  │  │   │
+│  │  │  - Calls Cloudflare Vision API            │  │   │
+│  │  └───────────────────────────────────────────┘  │   │
+│  │  ┌───────────────────────────────────────────┐  │   │
+│  │  │  describeVideo()                          │  │   │
+│  │  │  - Receives video frame buffer            │  │   │
+│  │  │  - Calls Cloudflare Vision API            │  │   │
+│  │  └───────────────────────────────────────────┘  │   │
+│  │  ┌───────────────────────────────────────────┐  │   │
+│  │  │  textToSpeech()                          │  │   │
+│  │  │  - Receives text                         │  │   │
+│  │  │  - Calls Cloudflare TTS API              │  │   │
 │  │  └───────────────────────────────────────────┘  │   │
 │  └─────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
-                         │
-                         ▼
-              ┌─────────────────────────┐
-              │  Cloudflare Workers AI   │
-              │  @cf/openai/whisper-*   │
-              └─────────────────────────┘
+                          │
+                          ▼
+               ┌─────────────────────────┐
+               │  Cloudflare Workers AI   │
+               │  • Whisper (STT)        │
+               │  • Llama Vision         │
+               │  • Deepgram Aura (TTS)  │
+               └─────────────────────────┘
 ```
-
-### Key Components
-
-1. **Plugin Registration**: Registers `cloudflare_ai` tool and CLI commands
-2. **Audio Handler**: Fetches audio from URL or local file, converts to required format
-3. **API Client**: Handles Cloudflare API authentication and requests
-4. **Response Parser**: Extracts transcription text from Cloudflare response
-
-### Alternative: Using Core's STT Runtime
-
-Plugins can also use `api.runtime.stt.transcribeAudioFile()` which uses the built-in `tools.media.audio` configuration (Deepgram, OpenAI, etc.). This is useful for plugins that want to use the same transcription as the core media understanding system.
 
 ## Development
 
@@ -192,14 +235,21 @@ Plugins can also use `api.runtime.stt.transcribeAudioFile()` which uses the buil
 ### Setup
 
 ```bash
-cd openclaw-plugin-cloudflare
+cd plugin-cloudflare
 pnpm install
 ```
 
-### Testing
+### Running Tests
 
 ```bash
-pnpm test
+# From OpenClaw workspace
+pnpm vitest run --config vitest.extensions.config.ts extensions/cloudflare-ai/src/index.test.ts
+```
+
+### Type Checking
+
+```bash
+pnpm tsc --noEmit
 ```
 
 ### Building
@@ -207,6 +257,27 @@ pnpm test
 ```bash
 pnpm build
 ```
+
+## Troubleshooting
+
+### Plugin Not Loading
+
+Check the Gateway logs for errors:
+```bash
+openclaw doctor
+```
+
+### API Errors
+
+- Verify your `accountId` is correct (not the zone ID)
+- Ensure the API token has AI:Read permissions
+- Check Cloudflare Workers AI is active on your account (free tier works)
+
+### Model Not Available
+
+Some models require acceptance of terms:
+- Llama 3.2 Vision: Accept Meta License via API (see above)
+- Check [Cloudflare Workers AI Models](https://developers.cloudflare.com/workers-ai/models/) for availability
 
 ## License
 
