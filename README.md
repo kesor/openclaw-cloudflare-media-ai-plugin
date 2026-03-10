@@ -28,19 +28,39 @@ OpenClaw plugin for **Cloudflare Workers AI** - provides media understanding cap
 
 ## Installation
 
-### Option 1: Install as an OpenClaw User (Recommended)
-
-If you're using OpenClaw (pre-built), install the plugin via the CLI:
+### Option 1: From npm (once published)
 
 ```bash
 openclaw plugins install @kesor/openclaw-cloudflare-plugin
 ```
 
-Then configure the plugin (see Configuration section below) and restart the Gateway.
+### Option 2: From a local path (development)
 
-### Option 2: Using a Custom Build of OpenClaw
+```bash
+# Clone the plugin repo or use local path
+openclaw plugins install /path/to/plugin-cloudflare
+```
 
-If you're compiling OpenClaw yourself, add this plugin to your OpenClaw extensions:
+Or use `--link` to create a symlink instead of copying:
+
+```bash
+openclaw plugins install /path/to/plugin-cloudflare --link
+```
+
+### Option 3: From archive file
+
+```bash
+# Build a tarball and install
+cd /path/to/plugin-cloudflare
+npm pack
+# Produces: openclaw-cloudflare-plugin-0.1.0.tgz
+
+openclaw plugins install ./openclaw-cloudflare-plugin-0.1.0.tgz
+```
+
+### Option 4: Built into OpenClaw (custom build)
+
+If you're compiling OpenClaw yourself:
 
 ```bash
 # From your OpenClaw source directory
@@ -50,14 +70,7 @@ cp -r /path/to/plugin-cloudflare extensions/cloudflare-ai
 pnpm build
 ```
 
-The plugin will be automatically loaded when OpenClaw starts.
-
-### Option 3: Manual Installation (Global Extension)
-
-```bash
-mkdir -p ~/.openclaw/extensions
-cp -R /path/to/plugin-cloudflare ~/.openclaw/extensions/cloudflare-ai
-cd ~/.openclaw/extensions/cloudflare-ai && pnpm install
+After installation, configure the plugin and restart the Gateway.
 ```
 
 Then configure and restart the Gateway.
