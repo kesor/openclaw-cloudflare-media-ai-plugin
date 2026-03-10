@@ -64,6 +64,10 @@ Then configure and restart the Gateway.
 
 ## Configuration
 
+You can configure the plugin via OpenClaw config **or** environment variables.
+
+### Option 1: OpenClaw Config
+
 Add to your OpenClaw config under `plugins.entries.cloudflare-ai.config`:
 
 ```json5
@@ -78,17 +82,34 @@ Add to your OpenClaw config under `plugins.entries.cloudflare-ai.config`:
 }
 ```
 
+### Option 2: Environment Variables
+
+The plugin also supports environment variables as an alternative to config:
+
+```bash
+# Required
+export CLOUDFLARE_API_TOKEN="your_api_token"
+export CLOUDFLARE_ACCOUNT_ID="your_account_id"
+
+# Optional (defaults shown)
+export CLOUDFLARE_AI_AUDIO_MODEL="@cf/openai/whisper-large-v3-turbo"
+export CLOUDFLARE_AI_IMAGE_MODEL="@cf/meta/llama-3.2-11b-vision-instruct-fp8"
+export CLOUDFLARE_AI_TTS_MODEL="@cf/deepgram/aura-2-en"
+```
+
+Environment variables take precedence over config values.
+
 ### Configuration Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `apiToken` | string | (required) | Cloudflare API token with AI read permissions |
-| `accountId` | string | (required) | Cloudflare account ID |
-| `audioModel` | string | `@cf/openai/whisper-large-v3-turbo` | Whisper model for STT |
-| `imageModel` | string | `@cf/meta/llama-3.2-11b-vision-instruct-fp8` | Vision model for image/video |
-| `ttsModel` | string | `@cf/deepgram/aura-2-en` | TTS model for speech synthesis |
-| `defaultLanguage` | string | `""` (auto-detect) | Language code (e.g., "en", "es") |
-| `timeout` | number | `60000` | Request timeout in milliseconds |
+| Option | Type | Default | Environment Variable | Description |
+|--------|------|---------|---------------------|-------------|
+| `apiToken` | string | (required) | `CLOUDFLARE_API_TOKEN` | Cloudflare API token with AI read permissions |
+| `accountId` | string | (required) | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+| `audioModel` | string | `@cf/openai/whisper-large-v3-turbo` | `CLOUDFLARE_AI_AUDIO_MODEL` | Whisper model for STT |
+| `imageModel` | string | `@cf/meta/llama-3.2-11b-vision-instruct-fp8` | `CLOUDFLARE_AI_IMAGE_MODEL` | Vision model for image/video |
+| `ttsModel` | string | `@cf/deepgram/aura-2-en` | `CLOUDFLARE_AI_TTS_MODEL` | TTS model for speech synthesis |
+| `defaultLanguage` | string | `""` (auto-detect) | - | Language code (e.g., "en", "es") |
+| `timeout` | number | `60000` | - | Request timeout in milliseconds |
 
 ## Available Models
 

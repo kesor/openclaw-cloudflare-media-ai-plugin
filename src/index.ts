@@ -215,8 +215,8 @@ const cloudflareAiPlugin = {
   resolveConfig(pluginConfig: unknown): CloudflareAiConfig {
     const raw = pluginConfig as Record<string, unknown> | undefined;
     return {
-      apiToken: typeof raw?.apiToken === "string" ? raw.apiToken : "",
-      accountId: typeof raw?.accountId === "string" ? raw.accountId : "",
+      apiToken: typeof raw?.apiToken === "string" ? raw.apiToken : process.env.CLOUDFLARE_API_TOKEN || "",
+      accountId: typeof raw?.accountId === "string" ? raw.accountId : process.env.CLOUDFLARE_ACCOUNT_ID || "",
       audioModel: typeof raw?.audioModel === "string" ? raw.audioModel : "@cf/openai/whisper-large-v3-turbo",
       imageModel: typeof raw?.imageModel === "string" ? raw.imageModel : "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
       ttsModel: typeof raw?.ttsModel === "string" ? raw.ttsModel : "@cf/deepgram/aura-2-en",
