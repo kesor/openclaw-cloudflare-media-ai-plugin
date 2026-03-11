@@ -3,7 +3,6 @@
   "providers": ["cloudflare-ai"],
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
     "properties": {
       "apiToken": {
         "type": "string",
