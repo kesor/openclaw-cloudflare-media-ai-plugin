@@ -83,7 +83,7 @@ You can configure the plugin via OpenClaw config **or** environment variables.
 
 ### Option 1: OpenClaw Config
 
-Add to your OpenClaw config under `plugins.entries.cloudflare-ai.config`:
+Add to your OpenClaw config under `plugins.entries.openclaw-cloudflare-plugin.config`:
 
 ```json5
 {

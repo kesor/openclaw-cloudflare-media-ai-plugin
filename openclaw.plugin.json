@@ -1,5 +1,5 @@
 {
-  "id": "cloudflare-ai",
+  "id": "openclaw-cloudflare-plugin",
   "providers": ["cloudflare-ai"],
   "configSchema": {
     "type": "object",
