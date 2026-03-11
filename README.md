@@ -171,28 +171,33 @@ Once configured, the plugin automatically integrates with OpenClaw's media-under
 
 ### Setting as Default Provider
 
-To use Cloudflare as your default media provider, configure `tools.media` in your OpenClaw config:
+To use Cloudflare as your media provider, configure `tools.media` in your OpenClaw config:
 
 ```json5
 {
   "tools": {
     "media": {
       "audio": {
-        "defaultProvider": "cloudflare-ai"
+        "models": [
+          { "provider": "cloudflare-ai" }
+        ]
       },
       "image": {
-        "defaultProvider": "cloudflare-ai"
+        "models": [
+          { "provider": "cloudflare-ai" }
+        ]
       },
       "video": {
-        "defaultProvider": "cloudflare-ai"
-      },
-      "tts": {
-        "defaultProvider": "cloudflare-ai"
+        "models": [
+          { "provider": "cloudflare-ai" }
+        ]
       }
     }
   }
 }
 ```
+
+**Note**: The `tts` capability is not yet configurable via config - it will use the first available TTS provider.
 
 ### Verifying Installation
 
