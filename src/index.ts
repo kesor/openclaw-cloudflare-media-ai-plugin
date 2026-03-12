@@ -1,4 +1,10 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
+import type {
+  AudioTranscriptionRequest,
+  ImageDescriptionRequest,
+  VideoDescriptionRequest,
+  TextToSpeechRequest,
+} from "openclaw/plugin-sdk/core";
 
 export interface CloudflareAiConfig {
   apiToken: string;
@@ -18,14 +24,14 @@ const cloudflareAiPlugin = {
     const config = this.resolveConfig(api.pluginConfig);
     this.validateConfig(config, api);
 
-    api.registerMediaProvider({
+    api.registerProvider({
       id: "cloudflare-ai",
       label: "Cloudflare AI Workers",
       capabilities: ["audio", "image", "video", "tts"],
       aliases: ["cloudflare", "cf"],
       docsPath: "https://developers.cloudflare.com/workers-ai/",
 
-      async transcribeAudio(req) {
+      async transcribeAudio(req: AudioTranscriptionRequest) {
         const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.audioModel}`;
 
         const input: Record<string, unknown> = {
@@ -67,7 +73,7 @@ const cloudflareAiPlugin = {
         };
       },
 
-      async describeImage(req) {
+      async describeImage(req: ImageDescriptionRequest) {
         const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.imageModel}`;
 
         const imageBase64 = req.buffer.toString("base64");
@@ -96,7 +102,7 @@ const cloudflareAiPlugin = {
           Object.assign(headers, req.headers);
         }
 
-        const response = await fetch(apiUrl, {
+        const response = await (req.fetchFn ?? fetch)(apiUrl, {
           method: "POST",
           headers,
           body: JSON.stringify(input),
@@ -120,7 +126,7 @@ const cloudflareAiPlugin = {
         };
       },
 
-      async describeVideo(req) {
+      async describeVideo(req: VideoDescriptionRequest) {
         const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.imageModel}`;
 
         const imageBase64 = req.buffer.toString("base64");
@@ -167,8 +173,12 @@ const cloudflareAiPlugin = {
         };
       },
 
-      async textToSpeech(req) {
+      async textToSpeech(req: TextToSpeechRequest) {
         const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${config.ttsModel}`;
+
+        if (req.telephony) {
+          api.logger.warn("[cloudflare-ai] telephony mode requested but Cloudflare TTS does not support PCM output; returning MP3");
+        }
 
         const input: Record<string, unknown> = {
           text: req.text,

@@ -2,6 +2,10 @@
 
 OpenClaw plugin for **Cloudflare Workers AI** - provides media understanding capabilities (speech-to-text, image description, video description, text-to-speech) using Cloudflare's AI models.
 
+## v0.2.0 Update
+
+This version updates to use the new unified `registerProvider` API introduced in OpenClaw. The plugin now registers as a provider with explicit capabilities (`audio`, `image`, `video`, `tts`) compatible with OpenClaw's media-understanding pipeline.
+
 ## Features
 
 - **Speech-to-Text (Audio Transcription)**: Transcribe audio using Cloudflare Whisper models
@@ -210,7 +214,7 @@ You can also verify the plugin is registered by checking `openclaw plugins list`
 
 ### How It Works
 
-The plugin uses OpenClaw's `registerMediaProvider` API to register as a media provider. When media is attached to incoming messages:
+The plugin uses OpenClaw's `registerProvider` API to register as a media provider with capabilities for audio, image, video, and TTS. When media is attached to incoming messages:
 
 ```
 User sends audio/image/video
@@ -233,7 +237,8 @@ Transcription / Description returned to agent
 ├─────────────────────────────────────────────────────────┤
 │  cloudflare-ai plugin                                   │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │  MediaProvider: cloudflare-ai                   │   │
+│  │  Provider: cloudflare-ai                         │   │
+│  │  Capabilities: audio, image, video, tts          │   │
 │  │  ┌───────────────────────────────────────────┐  │   │
 │  │  │  transcribeAudio()                        │  │   │
 │  │  │  - Receives audio buffer                  │  │   │
@@ -241,13 +246,13 @@ Transcription / Description returned to agent
 │  │  └───────────────────────────────────────────┘  │   │
 │  │  ┌───────────────────────────────────────────┐  │   │
 │  │  │  describeImage()                          │  │   │
-│  │  │  - Receives image buffer                  │  │   │
-│  │  │  - Calls Cloudflare Vision API            │  │   │
+│  │  │  - Receives image buffer                 │  │   │
+│  │  │  - Calls Cloudflare Vision API           │  │   │
 │  │  └───────────────────────────────────────────┘  │   │
 │  │  ┌───────────────────────────────────────────┐  │   │
 │  │  │  describeVideo()                          │  │   │
-│  │  │  - Receives video frame buffer            │  │   │
-│  │  │  - Calls Cloudflare Vision API            │  │   │
+│  │  │  - Receives video frame buffer           │  │   │
+│  │  │  - Calls Cloudflare Vision API           │  │   │
 │  │  └───────────────────────────────────────────┘  │   │
 │  │  ┌───────────────────────────────────────────┐  │   │
 │  │  │  textToSpeech()                          │  │   │
@@ -283,19 +288,21 @@ pnpm install
 ### Running Tests
 
 ```bash
-# From OpenClaw workspace
-pnpm vitest run --config vitest.extensions.config.ts extensions/cloudflare-ai/src/index.test.ts
+cd plugin-cloudflare
+pnpm test
 ```
 
 ### Type Checking
 
 ```bash
-pnpm tsc --noEmit
+cd plugin-cloudflare
+pnpm check
 ```
 
 ### Building
 
 ```bash
+cd plugin-cloudflare
 pnpm build
 ```
 

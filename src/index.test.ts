@@ -1,7 +1,18 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import cloudflareAiPlugin, { type CloudflareAiConfig } from "./index.js";
 
 describe("Cloudflare AI Plugin", () => {
+  let originalEnv: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    originalEnv = { ...process.env };
+  });
+
+  afterEach(() => {
+    Object.assign(process.env, originalEnv);
+    delete process.env.CLOUDFLARE_API_TOKEN;
+    delete process.env.CLOUDFLARE_ACCOUNT_ID;
+  });
   describe("resolveConfig", () => {
     it("resolves full config correctly", () => {
       const config = (cloudflareAiPlugin as unknown as { resolveConfig: (c: unknown) => CloudflareAiConfig }).resolveConfig({
@@ -134,6 +145,54 @@ describe("Cloudflare AI Plugin", () => {
       expect(cloudflareAiPlugin.description).toContain("Cloudflare Workers AI");
     });
   });
+
+  describe("telephony support", () => {
+    const mockApi = {
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      pluginConfig: {
+        apiToken: "test-token",
+        accountId: "test-account",
+        audioModel: "@cf/openai/whisper-large-v3-turbo",
+        imageModel: "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+        ttsModel: "@cf/deepgram/aura-2-en",
+        defaultLanguage: "",
+        timeout: 60000,
+      },
+      registerProvider: vi.fn(),
+      registerService: vi.fn(),
+    };
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("logs warning when telephony mode is requested", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(100),
+      });
+
+      cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+      const providerCall = mockApi.registerProvider.mock.calls[0][0];
+      
+      await providerCall.textToSpeech({
+        text: "Hello",
+        apiKey: "test-key",
+        timeoutMs: 30000,
+        telephony: true,
+        fetchFn: mockFetch,
+      } as Parameters<typeof providerCall.textToSpeech>[0]);
+
+      expect(mockApi.logger.warn).toHaveBeenCalledWith(
+        "[cloudflare-ai] telephony mode requested but Cloudflare TTS does not support PCM output; returning MP3",
+      );
+    });
+  });
 });
 
 describe("Cloudflare AI API integration", () => {
@@ -219,5 +278,443 @@ describe("Available models", () => {
       expect(model).toContain("llava");
       expect(model).toContain("vision");
     });
+  });
+});
+
+describe("Plugin registration", () => {
+  const createMockApi = () => ({
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
+    pluginConfig: {
+      apiToken: "test-token",
+      accountId: "test-account",
+      audioModel: "@cf/openai/whisper-large-v3-turbo",
+      imageModel: "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+      ttsModel: "@cf/deepgram/aura-2-en",
+      defaultLanguage: "",
+      timeout: 60000,
+    },
+    registerProvider: vi.fn(),
+    registerService: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls registerProvider with correct id and label", () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    expect(mockApi.registerProvider).toHaveBeenCalledTimes(1);
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    expect(providerConfig.id).toBe("cloudflare-ai");
+    expect(providerConfig.label).toBe("Cloudflare AI Workers");
+  });
+
+  it("registers all required capabilities", () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    expect(providerConfig.capabilities).toContain("audio");
+    expect(providerConfig.capabilities).toContain("image");
+    expect(providerConfig.capabilities).toContain("video");
+    expect(providerConfig.capabilities).toContain("tts");
+    expect(providerConfig.capabilities).toHaveLength(4);
+  });
+
+  it("registers correct aliases", () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    expect(providerConfig.aliases).toContain("cloudflare");
+    expect(providerConfig.aliases).toContain("cf");
+  });
+
+  it("registers docsPath", () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    expect(providerConfig.docsPath).toBe("https://developers.cloudflare.com/workers-ai/");
+  });
+
+  it("registers all required methods", () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    expect(typeof providerConfig.transcribeAudio).toBe("function");
+    expect(typeof providerConfig.describeImage).toBe("function");
+    expect(typeof providerConfig.describeVideo).toBe("function");
+    expect(typeof providerConfig.textToSpeech).toBe("function");
+  });
+
+  it("registers a service", () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    expect(mockApi.registerService).toHaveBeenCalledTimes(1);
+    const serviceConfig = mockApi.registerService.mock.calls[0][0];
+    expect(serviceConfig.id).toBe("cloudflare-ai");
+  });
+
+  it("logs startup message", () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const serviceConfig = mockApi.registerService.mock.calls[0][0];
+    serviceConfig.start();
+
+    expect(mockApi.logger.info).toHaveBeenCalledWith("[cloudflare-ai] Plugin started");
+  });
+});
+
+describe("transcribeAudio API", () => {
+  const createMockApi = () => ({
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+    pluginConfig: {
+      apiToken: "test-token",
+      accountId: "test-account",
+      audioModel: "@cf/openai/whisper-large-v3-turbo",
+      imageModel: "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+      ttsModel: "@cf/deepgram/aura-2-en",
+      defaultLanguage: "",
+      timeout: 60000,
+    },
+    registerProvider: vi.fn(),
+    registerService: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls correct Cloudflare API endpoint", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ result: { text: "Hello world" } }),
+    });
+
+    await providerConfig.transcribeAudio({
+      buffer: Buffer.from("test audio"),
+      fileName: "test.wav",
+      apiKey: "test-key",
+      timeoutMs: 30000,
+      fetchFn: mockFetch,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "https://api.cloudflare.com/client/v4/accounts/test-account/ai/run/@cf/openai/whisper-large-v3-turbo"
+    );
+  });
+
+  it("includes language in request when provided", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ result: { text: "Hello" } }),
+    });
+
+    await providerConfig.transcribeAudio({
+      buffer: Buffer.from("test audio"),
+      fileName: "test.wav",
+      language: "es",
+      apiKey: "test-key",
+      timeoutMs: 30000,
+      fetchFn: mockFetch,
+    });
+
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody.language).toBe("es");
+  });
+
+  it("throws error when API returns non-OK status", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => "Unauthorized",
+    });
+
+    await expect(
+      providerConfig.transcribeAudio({
+        buffer: Buffer.from("test audio"),
+        fileName: "test.wav",
+        apiKey: "test-key",
+        timeoutMs: 30000,
+        fetchFn: mockFetch,
+      })
+    ).rejects.toThrow("Cloudflare API error: 401 Unauthorized");
+  });
+
+  it("throws error when no transcription returned", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ result: {} }),
+    });
+
+    await expect(
+      providerConfig.transcribeAudio({
+        buffer: Buffer.from("test audio"),
+        fileName: "test.wav",
+        apiKey: "test-key",
+        timeoutMs: 30000,
+        fetchFn: mockFetch,
+      })
+    ).rejects.toThrow("No transcription returned from Cloudflare");
+  });
+});
+
+describe("describeImage API", () => {
+  const createMockApi = () => ({
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+    pluginConfig: {
+      apiToken: "test-token",
+      accountId: "test-account",
+      audioModel: "@cf/openai/whisper-large-v3-turbo",
+      imageModel: "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+      ttsModel: "@cf/deepgram/aura-2-en",
+      defaultLanguage: "",
+      timeout: 60000,
+    },
+    registerProvider: vi.fn(),
+    registerService: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls correct Cloudflare API endpoint for vision", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ result: { response: "A cat" } }),
+    });
+
+    await providerConfig.describeImage({
+      buffer: Buffer.from("test image"),
+      fileName: "test.jpg",
+      model: "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+      provider: "cloudflare",
+      agentDir: "/test",
+      apiKey: "test-key",
+      timeoutMs: 30000,
+      fetchFn: mockFetch,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "https://api.cloudflare.com/client/v4/accounts/test-account/ai/run/@cf/meta/llama-3.2-11b-vision-instruct-fp8"
+    );
+  });
+
+  it("uses custom prompt when provided", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ result: { response: "Description" } }),
+    });
+
+    await providerConfig.describeImage({
+      buffer: Buffer.from("test image"),
+      fileName: "test.jpg",
+      model: "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+      provider: "cloudflare",
+      prompt: "What is this?",
+      agentDir: "/test",
+      apiKey: "test-key",
+      timeoutMs: 30000,
+      fetchFn: mockFetch,
+    });
+
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody.messages[0].content[0].text).toBe("What is this?");
+  });
+
+  it("includes custom headers when provided", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ result: { response: "Description" } }),
+    });
+
+    await providerConfig.describeImage({
+      buffer: Buffer.from("test image"),
+      fileName: "test.jpg",
+      model: "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+      provider: "cloudflare",
+      headers: { "X-Custom-Header": "custom-value" },
+      agentDir: "/test",
+      apiKey: "test-key",
+      timeoutMs: 30000,
+      fetchFn: mockFetch,
+    });
+
+    const headers = mockFetch.mock.calls[0][1].headers;
+    expect(headers["X-Custom-Header"]).toBe("custom-value");
+  });
+});
+
+describe("textToSpeech API", () => {
+  const createMockApi = () => ({
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+    pluginConfig: {
+      apiToken: "test-token",
+      accountId: "test-account",
+      audioModel: "@cf/openai/whisper-large-v3-turbo",
+      imageModel: "@cf/meta/llama-3.2-11b-vision-instruct-fp8",
+      ttsModel: "@cf/deepgram/aura-2-en",
+      defaultLanguage: "",
+      timeout: 60000,
+    },
+    registerProvider: vi.fn(),
+    registerService: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls correct Cloudflare TTS API endpoint", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(100),
+    });
+
+    await providerConfig.textToSpeech({
+      text: "Hello world",
+      apiKey: "test-key",
+      timeoutMs: 30000,
+      fetchFn: mockFetch,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "https://api.cloudflare.com/client/v4/accounts/test-account/ai/run/@cf/deepgram/aura-2-en"
+    );
+  });
+
+  it("includes voice in request when provided", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(100),
+    });
+
+    await providerConfig.textToSpeech({
+      text: "Hello",
+      voice: "male",
+      apiKey: "test-key",
+      timeoutMs: 30000,
+      fetchFn: mockFetch,
+    });
+
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody.speaker).toBe("male");
+  });
+
+  it("returns audio buffer with correct mime type", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => Buffer.from("audio data").buffer,
+    });
+
+    const result = await providerConfig.textToSpeech({
+      text: "Hello",
+      apiKey: "test-key",
+      timeoutMs: 30000,
+      fetchFn: mockFetch,
+    });
+
+    expect(result.mime).toBe("audio/mp3");
+    expect(result.sampleRate).toBe(24000);
+    expect(Buffer.isBuffer(result.audio)).toBe(true);
+  });
+
+  it("does not log telephony warning when telephony is false", async () => {
+    const mockApi = createMockApi();
+    cloudflareAiPlugin.register(mockApi as unknown as Parameters<typeof cloudflareAiPlugin.register>[0]);
+
+    const providerConfig = mockApi.registerProvider.mock.calls[0][0];
+    
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(100),
+    });
+
+    await providerConfig.textToSpeech({
+      text: "Hello",
+      telephony: false,
+      apiKey: "test-key",
+      timeoutMs: 30000,
+      fetchFn: mockFetch,
+    });
+
+    expect(mockApi.logger.warn).not.toHaveBeenCalled();
   });
 });
